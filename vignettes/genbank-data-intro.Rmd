@@ -1,0 +1,116 @@
+---
+title: "Working with Nextstrain GenBank data"
+author: "Nicholas G Reich"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_vignette:
+    df_print: "kable"
+vignette: >
+  %\VignetteIndexEntry{Working with Nextstrain GenBank data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8
+)
+```
+
+## Background on genomic data
+
+- What are GenBank and GISAID, why is genbank good for US data
+- basics on clades and clade/variant naming for SARS-CoV-2
+- metadata vs. FAFSA etc...
+
+## Downloading Nextstrain-curated GenBank data
+
+The [Nextstrain](https://nextstrain.org/) project makes [daily snapshots of GenBank data available for the US and the world](https://docs.nextstrain.org/projects/ncov/en/latest/reference/remote_inputs.html#summary-of-available-genbank-open-files). Specifically, the flat tab-separated file available at https://data.nextstrain.org/files/ncov/open/metadata.tsv.gz is updated daily, typically around 11am or noon US Pacific time. This file is large (>350MB as of 2022-02-09). For the below, we assume that you have downloaded this file and unzipped it so the `.tsv` file can be read in directly.
+
+A codebook for the fields in the dataset are available [here](https://docs.nextstrain.org/projects/ncov/en/latest/reference/metadata-fields.html).
+
+## Initial GenBank data exploration
+
+Let's start by loading some tidyverse packages that will be useful for us and then by reading in the dataset.
+```{r}
+library(tidyverse)
+library(lubridate)
+theme_set(theme_bw())
+genbank_global <- read_tsv("data/metadata.tsv")
+```
+
+This is a large file, with `r nrow(genbank_global)` rows. For starters, we create a version of these data that contain only US data, and only retains columns we are interested in. Further, we will reformat certain columns.
+
+```{r}
+us_dat <- genbank_global %>% 
+  filter(country=="USA") %>%
+  mutate(date = ymd(date), 
+         date_submitted = ymd(date_submitted),
+         reporting_lag = as.numeric(date_submitted - date)) %>%
+  select(strain, virus, Nextstrain_clade,  ## info on the virus
+         region, country, division, location, ## info on location
+         host, sampling_strategy, ## info about the sample
+         date, date_submitted, reporting_lag) ## dates
+```
+
+```{r}
+us_dat %>%
+  group_by(Nextstrain_clade) %>%
+  summarize(n_samples = n()) 
+```
+
+
+Note that the `sampling_strategy` field is empty for all US data.
+```{r}
+us_dat %>%
+  group_by(sampling_strategy) %>%
+  summarize(n_samples = n()) 
+```
+
+
+The following figure shows the reporting lags by state as computed in the data as the difference between the `date` the sample was taken and the `date_submitted`, which is the date the sample was submitted to the GenBank system. There appears to be substantial variation by location (note the shorter lags in MA, CA and VT), with 75% of samples typically reported by 1 month out. Note this is subsetting to look at all data starting in August of 2021. Some analyses, for example [the $R_t$ analysis that the Bedford Lab has done](https://github.com/blab/rt-from-frequency-dynamics), remove all samples from the last 10 days, to try to remove small sample effects in the early reporting.
+```{r}
+us_dat %>%
+  filter(date > ymd("2021-08-01")) %>%
+  ggplot(aes(x=division, y=reporting_lag)) + 
+  geom_boxplot() +
+  scale_y_log10(name= "lag (days, log scale)", breaks=c(7, 14, 21, 30, 90, 360, 720)) +
+  xlab(NULL) +
+  theme(axis.text.x = element_text(angle=60, vjust=1, hjust=1))
+```
+
+Plot of samples over time
+```{r}
+us_dat %>%
+  group_by(date) %>%
+  summarize(n_samples = n()) %>% 
+  ggplot(aes(x=date, y=n_samples)) +
+  geom_bar(alpha=.3, stat="identity") +
+  geom_smooth(span=.1, se=FALSE)
+```
+
+
+
+Here is a plot of the prevalence of each clade by week across 2021.
+```{r, }
+by_clade <- us_dat %>%
+  filter(year(date) == 2021) %>%   ## focus only on 2021 
+  mutate(epiweek = epiweek(date)) %>%
+  filter(epiweek < 53) %>%        ## values of 53 are at the start of 2021 
+  group_by(Nextstrain_clade, epiweek) %>%
+  summarize(clade_total = n()) %>%
+  group_by(epiweek) %>%
+  mutate(total_samples = sum(clade_total),
+         pct_clade_in_epiweek = clade_total/total_samples)  
+
+p <- by_clade %>%
+  ggplot(aes(x=epiweek, y=pct_clade_in_epiweek, color=Nextstrain_clade)) +
+  geom_line()
+
+plotly::ggplotly(p)
+```
+
