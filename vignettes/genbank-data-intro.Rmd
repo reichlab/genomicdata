@@ -1,6 +1,6 @@
 ---
 title: "Working with Nextstrain GenBank data"
-author: "Nicholas G Reich"
+author: "Estee Y Cramer, Nicholas G Reich"
 date: "`r Sys.Date()`"
 output: 
   rmarkdown::html_vignette:
@@ -25,13 +25,13 @@ knitr::opts_chunk$set(
 
 
 ### GISAID and GenBank
-Over the last two years, COVID-19 genomic data has been collected and stored on two central data repositories, [GISAID](https://www.gisaid.org/) and [GenBank](https://www.ncbi.nlm.nih.gov/genbank/). 
+Over the last two years, COVID-19 genomic data have been collected and stored in two central data repositories, [GISAID](https://www.gisaid.org/) and [GenBank](https://www.ncbi.nlm.nih.gov/genbank/). 
 
-GISAID is a global science initiative that provides open-access genomic data of influenza viruses and the SARS-CoV-2 virus. With over 6 million submissions, GISAID currently hosts the largest repository for SARS-CoV-2 sequences. Because GISAID is not under public domain, GISAID data can only be accessed after creating a username and agreeing to a Database Access Agreement. 
+GISAID is a global science initiative that provides open-access genomic data of influenza viruses and the SARS-CoV-2 virus. With over 6 million submissions, GISAID currently hosts the largest repository for SARS-CoV-2 sequences. Because GISAID data are not in the public domain, GISAID data can only be accessed after creating a username and agreeing to a Database Access Agreement. 
 
-GenBank is an annotated collection of publicly available DNA sequences. It is the genetic sequence database of the NIH. GenBank currently has over 3 million sequence read archive (SRA) runs and over 3.8 million nucleotide records for SARS-CoV-2 data. This database was created to provide access to the most up-to-date and comprehensive DNA sequence information, therefore there are no restrictions on the use or distribution of this data. 
+GenBank is an annotated collection of publicly available DNA sequences. It is the genetic sequence database of the US NIH. GenBank currently has over 3 million sequence read archive (SRA) runs and over 3.8 million nucleotide records for SARS-CoV-2. This database was created to provide access to the most up-to-date and comprehensive DNA sequence information, therefore there are no restrictions on the use or distribution of this data. 
 
-Though GISAID contains more variant data for SARS-CoV-2, for projects interested in looking at data in he United States may find that GenBank is sufficient. This is because much US sequencing is conducted through CDC contracts that stipulate a GenBank submission.
+Though GISAID contains more variant data for SARS-CoV-2 globally, for projects interested in looking at data in the US may find that GenBank is sufficient. This is because much US sequencing is conducted through CDC contracts that stipulate a GenBank submission.
 
 
 ### Clade and variant nomenclature
@@ -49,17 +49,16 @@ To signify clade major lineages with a hierarchical structure, emerging clades m
 Additional information regarding the original naming naming conventions using the Nextstrain naming structure can be found at the link: [https://nextstrain.org/blog/2020-06-02-SARSCoV2-clade-naming](https://nextstrain.org/blog/2020-06-02-SARSCoV2-clade-naming) and updated nomenclature can be found at the link [https://nextstrain.org/blog/2021-01-06-updated-SARS-CoV-2-clade-naming](https://nextstrain.org/blog/2021-01-06-updated-SARS-CoV-2-clade-naming)
 
 
+The rules of Pango lineage naming are complex. Information describing the naming rules for Pango lineages can be found [here](https://www.pango.network/the-pango-nomenclature-system/statement-of-nomenclature-rules/).
 In the Pango naming system, lineages are named to signify clusters of infections with shared ancestry and to highlight epidemiologically-relevant events.
 
-The rules of Pango lineage naming are complex. Information describing the naming rules for Pango lineages can be found [here](https://www.pango.network/the-pango-nomenclature-system/statement-of-nomenclature-rules/)
-
-For modelers conducting a variant level analysis, Nextstrain naming conventions are recommended. For modelers wishing to conduct a sub-variant analysis, Nextstrain naming conventions may not be specific enough and therefore PANGO naming conventions are recommended. 
+For modelers conducting a variant-level analysis, we recommend using Nextstrain naming conventions. For modelers wishing to conduct a sub-variant analysis, Nextstrain naming conventions may not be specific enough and therefore PANGO naming conventions may be useful in these settings. 
 
 ### Data file types
 
-When looking to access genomic data, raw data is stored in a number of different file types. For variant level analyses, the metadata file describes information such as the sample's origin, cell line, and preparation method. 
+When looking to access genomic data, raw data is stored in a number of different file types. For variant level analyses, the "metadata" file described below is a flat tab-separated dataset that includes one row per sample and has information such as the sample's origin, cell line, and preparation method, as well as which variant was identified in the sample. 
 
-The FASTA file contains the nucleic acid or amino acid sequence information in a text fie format for for a single sample.
+The FASTA file contains the detailed nucleic acid or amino acid sequence information in a text fie format for for a single sample.
 
 
 ## Downloading Nextstrain-curated GenBank data
@@ -132,8 +131,19 @@ us_dat %>%
 
 Here is a plot of the prevalence of each clade by week across 2021.
 ```{r, }
+strains_of_interest <- 
+  c("20I (Alpha, V1)", 
+    "20J (Gamma, V3)", 
+    "21A (Delta)",
+    "21C (Epsilon)",
+    "21I (Delta)",
+    "21J (Delta)",
+    "21K (Omicron)"
+    )
+
 by_clade <- us_dat %>%
   filter(year(date) == 2021) %>%   ## focus only on 2021 
+  filter(Nextstrain_clade %in% strains_of_interest) %>%
   mutate(epiweek = epiweek(date)) %>%
   filter(epiweek < 53) %>%        ## values of 53 are at the start of 2021 
   group_by(Nextstrain_clade, epiweek) %>%
