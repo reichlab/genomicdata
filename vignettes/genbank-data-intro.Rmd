@@ -61,6 +61,13 @@ When looking to access genomic data, raw data is stored in a number of different
 The FASTA file contains the detailed nucleic acid or amino acid sequence information in a text fie format for for a single sample.
 
 
+### Limitations in using genomic data 
+While genomic data is a potentially useful data source, there are flaws in the data that are worth noting at this time. One issue with using genomic data is that in order to capture emerging variants in a geographic region, experts recommend sequencing at least 5% of available samples. However, as of December 2021, there were 10 states in the US that had sequenced fewer than 2% of available samples. Thus, it is possible that within the US, variants and emerging strains are not being adequately detected. Additional information about the heterogenous testing rates in the US can be found in the [Nature news article linked here](https://www.nature.com/articles/d41586-021-03698-7). Additionally, in April of 2021, genomic data was only available for only 1.6% of all positive cases, thus it is possible that variant information before this date is inaccurate the national level [https://www.nature.com/articles/d41586-021-00908-0](https://www.nature.com/articles/d41586-021-00908-0). 
+
+Another issue that may bias population estimates of variant prevalence is that there are not clear guidelines on how positive samples are selected for genotyping. If the more severe or more surprising cases are sent out to be genotyped, it may influences the results. This is problematic because without knowing how samples are selected for testing, we cannot control for this issue in models. 
+
+
+
 ## Downloading Nextstrain-curated GenBank data
 
 The [Nextstrain](https://nextstrain.org/) project makes [daily snapshots of GenBank data available for the US and the world](https://docs.nextstrain.org/projects/ncov/en/latest/reference/remote_inputs.html#summary-of-available-genbank-open-files). Specifically, the flat tab-separated file available at https://data.nextstrain.org/files/ncov/open/metadata.tsv.gz is updated daily, typically around 11am or noon US Pacific time. This file is large (>350MB as of 2022-02-09). For the below, we assume that you have downloaded this file and unzipped it so the `.tsv` file can be read in directly.
