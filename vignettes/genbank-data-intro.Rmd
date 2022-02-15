@@ -66,8 +66,7 @@ While genomic data is a potentially useful data source, there are flaws in the d
 
 Another issue that may bias population estimates of variant prevalence is that there are not clear guidelines on how positive samples are selected for genotyping. If the more severe or more surprising cases are sent out to be genotyped, it may influences the results. This is problematic because without knowing how samples are selected for testing, we cannot control for this issue in models. 
 
-
-When using genomic data in models, it is important to consider factors such as sampling density, the timing of sample collection, the portion of the viral genome sequenced, quality of sequencing data and the mutation rate of the virus itself. All of these factors may impact the validity of variant prevalence values [https://www.nature.com/articles/s41564-020-0738-5[](https://www.nature.com/articles/s41564-020-0738-5)
+When using genomic data in models, it is important to consider factors such as sampling density, the timing of sample collection, the portion of the viral genome sequenced, quality of sequencing data and the mutation rate of the virus itself. All of these factors may impact the validity of variant prevalence values [https://www.nature.com/articles/s41564-020-0738-5](https://www.nature.com/articles/s41564-020-0738-5)
 
 ## Downloading Nextstrain-curated GenBank data
 
