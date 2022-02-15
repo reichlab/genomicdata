@@ -62,11 +62,11 @@ The FASTA file contains the detailed nucleic acid or amino acid sequence informa
 
 
 ### Limitations in using genomic data 
-While genomic data is a potentially useful data source, there are flaws in the data that are worth noting at this time. One issue with using genomic data is that in order to capture emerging variants in a geographic region, experts recommend sequencing at least 5% of available samples. However, as of December 2021, there were 10 states in the US that had sequenced fewer than 2% of available samples. Thus, it is possible that within the US, variants and emerging strains are not being adequately detected. Information about the heterogenous testing rates in the US can be found in the [Nature news article linked here](https://www.nature.com/articles/d41586-021-03698-7). Additionally, in April of 2021, genomic data was only available for only 1.6% of all positive cases, thus it is possible that variant information before this date is inaccurate the national level [https://www.nature.com/articles/d41586-021-00908-0](https://www.nature.com/articles/d41586-021-00908-0). 
+While genomic data is a potentially useful data source, there are flaws in the data that are worth noting at this time. One issue with using genomic data is that in order to capture emerging variants in a geographic region, experts recommend sequencing at least 5% of available samples. However, as of December 2021, there were 10 states in the US that had sequenced fewer than 2% of available samples. Thus, it is possible that within the US, variants and emerging strains are not being adequately detected. Information about the heterogenous testing rates in the US can be found in the [Nature news article linked here](https://www.nature.com/articles/d41586-021-03698-7). Additionally, in April of 2021, genomic data was only available for only 1.6% of all positive cases, thus it is possible that variant information before this date is inaccurate the national level ([see another Nature article](https://www.nature.com/articles/d41586-021-00908-0)). 
 
 Another issue that may bias population estimates of variant prevalence is that there are not clear guidelines on how positive samples are selected for genotyping. If the more severe or more surprising cases are sent out to be genotyped, it may influences the results. This is problematic because without knowing how samples are selected for testing, we cannot control for this issue in models. 
 
-When using genomic data in models, it is important to consider factors such as sampling density, the timing of sample collection, the portion of the viral genome sequenced, quality of sequencing data and the mutation rate of the virus itself. All of these factors may impact the validity of variant prevalence values [https://www.nature.com/articles/s41564-020-0738-5](https://www.nature.com/articles/s41564-020-0738-5)
+When using genomic data in models, it is important to consider factors such as sampling density, the timing of sample collection, the portion of the viral genome sequenced, quality of sequencing data and the mutation rate of the virus itself. All of these factors may impact the validity of variant prevalence values ([see Villabona-Arenas et al.](https://www.nature.com/articles/s41564-020-0738-5)).
 
 ## Downloading Nextstrain-curated GenBank data
 
@@ -81,7 +81,7 @@ Let's start by loading some tidyverse packages that will be useful for us and th
 library(tidyverse)
 library(lubridate)
 theme_set(theme_bw())
-genbank_global <- read_tsv("data/metadata.tsv")
+genbank_global <- read_tsv("../data/metadata.tsv")
 ```
 
 This is a large file, with `r nrow(genbank_global)` rows. For starters, we create a version of these data that contain only US data, and only retains columns we are interested in. Further, we will reformat certain columns.
