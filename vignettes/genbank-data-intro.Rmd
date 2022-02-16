@@ -3,6 +3,8 @@ title: "Working with Nextstrain GenBank data"
 author: "Estee Y Cramer, Nicholas G Reich"
 date: "`r Sys.Date()`"
 output: 
+  md_document:
+    variant: markdown_github
   rmarkdown::html_vignette:
     df_print: "kable"
 vignette: >
@@ -159,10 +161,12 @@ by_clade <- us_dat %>%
   mutate(total_samples = sum(clade_total),
          pct_clade_in_epiweek = clade_total/total_samples)  
 
-p <- by_clade %>%
+by_clade %>%
   ggplot(aes(x=epiweek, y=pct_clade_in_epiweek, color=Nextstrain_clade)) +
-  geom_line()
-
-plotly::ggplotly(p)
+  geom_line() +
+  xlab("epiweek in 2021") +
+  ylab("% of samples by clade")
 ```
 
+## Acknowledgments
+We wish to thank all the labs whose effort and time are essential to making these important data available. Also, thanks to [Trevor Bedford](https://bedford.io/) and [the Nextstrain team](https://nextstrain.org/) for providing the processed version of the metadata files and providing some pointers and insights about these data as we were writing this post. 
