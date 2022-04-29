@@ -1,0 +1,50 @@
+---
+title: "multinomial model"
+author: "Estee Y Cramer"
+date: "3/28/2022"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Intro
+
+The goal of this markdown is to create a multinomial model to forecast genomic variants in the future. 
+
+This will be a probit model with the outcome of genetic variants over time at the national level in the US. It will also include time series to account for the changing variant frequencies over time. 
+
+
+# Read in data
+
+```{r}
+library(tidyverse)
+library(lubridate)
+theme_set(theme_bw())
+genbank_global <- read_tsv("data/metadata_USA.tsv")
+```
+
+```{r}
+require(foreign)
+require(nnet)
+require(reshape2)
+```
+
+
+```{r}
+us_dat <- genbank_global %>% 
+  filter(country_exposure =="USA") %>%
+  mutate(date = ymd(date), 
+         date_submitted = ymd(date_submitted),
+         reporting_lag = as.numeric(date_submitted - date)) %>%
+  select(strain, virus, Nextstrain_clade,  ## info on the virus
+         region, country, division, location, ## info on location
+         host, sampling_strategy, ## info about the sample
+         date, date_submitted, reporting_lag) %>% ## dates %>% 
+filter(!is.na(Nextstrain_clade)) %>%
+  filter(host == "Homo sapiens")
+
+National_level <- us_dat %>% filter(division == "USA")
+write_csv(National_level, "national_level.csv")
+```
