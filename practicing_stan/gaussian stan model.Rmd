@@ -86,7 +86,8 @@ omicron_date <- clean_df %>%
 ```{r}
 omicron_date_perc <- omicron_date %>%
   group_by(epiweek_year) %>%
-  summarise(perc_omicron = round(sum(binary_omicron) / n(),4)) 
+  summarise(perc_omicron = round(sum(binary_omicron) / n(),4)) %>%
+  mutate(num_week = row_number())
 ```
 
 
@@ -125,9 +126,9 @@ model1 <- cmdstan_model(stan_file = file1, include_paths = ".")
 
 Pass data to STAN 
 ```{r}
-standata1 <- list(x=omicron_date_perc$epiweek_year,
+standata1 <- list(x=omicron_date_perc$num_week,
                   y=omicron_date_perc$perc_omicron,
-                  N=length(omicron_date_perc$epiweek_year),
+                  N=length(omicron_date_perc$num_week),
                   #didn't change any of the below from the example.
                   c_f=1.5, # factor c of basis functions for GP for f1. 
                   M_f=40,  # number of basis functions for GP for f1
@@ -143,4 +144,42 @@ fit1 <- model1$sample(data=standata1, iter_warmup=500, iter_sampling=500,
                       chains=4, parallel_chains=2, adapt_delta=0.9)
 ```
 
+```{r}
+draws1 <- fit1$draws()
+summarise_draws(subset(draws1, variable=c('intercept','sigma_','lengthscale_'), regex=TRUE))
+```
+
+compare model to data
+```{r}
+draws1m <- as_draws_matrix(draws1)
+Ef <- colMeans(subset(draws1m, variable='f'))
+sigma <- colMeans(subset(draws1m, variable='sigma'))
+pred<-data.frame(Ef=Ef,sigma=sigma)
+cbind(omicron_date_perc, pred) %>%
+  ggplot(aes(x=num_week,y=perc_omicron))+
+  geom_point()+
+  labs(x="Week (number)", y="Percent Omicron")+
+  geom_line(aes(y=Ef), color=set1[1])+
+  geom_line(aes(y=Ef-2*sigma), color=set1[1],linetype="dashed")+
+  geom_line(aes(y=Ef+2*sigma), color=set1[1],linetype="dashed")
+
+```
+
+plot posterior
+
+```{r}
+subset(draws1, variable="f") %>%
+  thin_draws(thin=5)%>%
+  as_draws_df() %>%
+  pivot_longer(!starts_with("."),
+               names_to="ind",
+               names_transform = list(ind = readr::parse_number),
+               values_to="mu") %>%
+  mutate(time=omicron_date_perc$num_week[ind])%>%
+  ggplot(aes(time, mu, group = .draw)) +
+  geom_line(color=set1[2], alpha = 0.1) +
+  geom_point(data=omicron_date_perc, mapping=aes(x=num_week,y=perc_omicron), inherit.aes=FALSE)+
+  geom_line(data=cbind(omicron_date_perc,pred), mapping=aes(x=num_week,y=Ef), inherit.aes=FALSE, color=set1[1], size=1)+
+  labs(x="Week (numeric)", y="Percent Omicron")
+```
 
