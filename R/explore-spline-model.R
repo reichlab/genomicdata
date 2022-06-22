@@ -34,7 +34,7 @@ betas <- replicate(nsim,
                        simplify=FALSE)
 
 # simulate meaningless Ys
-weights <- B %*% beta_list[[1]]
+weights <- B %*% betas[[1]]
 Y <- matrix(NA, nrow=T, ncol=K)
 for(t in 1:T)
   Y[t,] <- t(rmultinom(1, size=N, prob=exp(weights[t,])/sum(exp(weights[t,])))) #matrix(10, nrow=T, ncol=K)
@@ -133,6 +133,9 @@ ggplot(pi_est, aes(x=week)) +
 
 ########
 ## estimate model using real data
+
+## selecting clade with >10K samples total
+## and reserving the last ~year of data as a test set
 clades <- c("20A", "20C", 
             "20G", "20I (Alpha, V1)", 
             "21I (Delta)", "21J (Delta)", 
