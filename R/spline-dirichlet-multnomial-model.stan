@@ -9,7 +9,6 @@ data {
   int<lower=1> K; // # of clades
   
   array[T,K] int Y; // counts of clade k at time t
-  array[T] int N;   // counts of total samples at each time t
   
   int<lower=1> n_basis; // number of basis functions
   matrix[T, n_basis] B; // design matrix with basis functions **will increase T when forecasting**
@@ -24,50 +23,50 @@ transformed data {
   for (i in 1:(K-1)){
     ones[i] = 1;
   }
-  
-  // matrix<lower=0>[T,K] F; // frequencies of clade k at time t
-  // for (t in 1:T){
-  //   F[t,] = to_row_vector(Y[t,]) / N[t];
-  // }
-  // 
+
+  matrix<lower=0,upper=1>[T,K] F; // frequencies of clade k at time t
+  for (t in 1:T) {
+    F[t,] = to_row_vector(Y[t,]) / sum(Y[t,]);
+  }
 }
 
 parameters {
   matrix[n_basis,K-1] beta_raw;
-  array[T] simplex[K] pi;
 }
 
 transformed parameters{
   matrix[T,K] phi; 
+  
+  // defines beta as beta_raw plus a column that 
   matrix[n_basis,K] beta = append_col(beta_raw, -beta_raw*ones);
 
   // compute spline values, for each k (clade)
   for (k in 1:K){
-    phi[,k] = B * beta[,k];
+    phi[,k] = exp( B * beta[,k] );
   }
 }
 
 model {
   // RW-like priors
-  to_vector(beta_raw[1,1:(K-1)]) ~ normal(0, sigma_beta); // start at zero
-  for (j in 2:n_basis){
-    for (k in 2:(K-1)){
-      beta[j,k] ~ cauchy(beta[j-1,k], sigma_beta_rw); // RW-like structure after 
-    }
-  }
+  // to_vector(beta_raw[1,1:(K-1)]) ~ normal(0, sigma_beta); // start at zero
+  // for (j in 2:n_basis){
+  //   for (k in 2:(K-1)){
+  //     beta[j,k] ~ cauchy(beta[j-1,k], sigma_beta_rw); // RW-like structure after 
+  //   }
+  // }
+  to_vector(beta_raw[,1:(K-1)]) ~ normal(0, sigma_beta);
   
   // define probabilities and define likelihood, for each time
   for (t in 1:T){
-    pi[t] ~ dirichlet(exp(phi[t,]));
-    Y[t,] ~ multinomial(pi[t]);
+    F[t,] ~ dirichlet(phi[t,]);
   }
 }
 
 generated quantities {
   // for simulating new observations
-  array[T,K] int y_sim;
+  matrix<lower=0,upper=1>[T,K] F_sim;
   for (t in 1:T){
-    y_sim[t,] = multinomial_rng(pi[t], N[t]);
+    F_sim[t,] = to_row_vector(dirichlet_rng(to_vector(phi[t,])));
   }
 }
 
