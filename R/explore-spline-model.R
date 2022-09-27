@@ -142,7 +142,8 @@ clades <- c("20A", "20C",
             "21K (Omicron)")
 raw_d <- read_csv("data/genomic_data_for_modeling.csv") %>%
   filter(Nextstrain_clade %in% clades, 
-         epidate <= as.Date("2021-06-01")) 
+         epidate <= as.Date("2021-06-01"),
+         epidate > as.Date("2020-04-01")) 
 
 d <- raw_d %>%
   pivot_wider(id_cols = epiweek_year, 
@@ -156,8 +157,9 @@ realdata_fit <- mdl$sample(data = list(T = nrow(d), ## num observations
                                        N = rowSums(as.matrix(d[,-1])), ## total samples per time
                                        n_basis = 5, ## num basis funcitons
                                        B = B <- bs(1:nrow(d), df = 5, intercept=TRUE), ## design matrix of basis functions 
-                                       sigma_beta = 5, ## prior sd for beta
-                                       sigma_beta_rw = .5), ## prior sd for beta RW 
+                                       sigma_beta = 1, ## prior sd for beta
+                                       sigma_beta_rw = .5, ## prior sd for beta RW 
+                                       A_eps = 5), ## prior inverse shape for gamma for sigma_eps
                            chains=4, 
                            parallel_chains=4)
 ## get and plot simulated pi's
@@ -171,10 +173,12 @@ pi_est <- pivot_longer(draws_pi, cols = starts_with("pi")) %>%
             q90 = quantile(value, probs=0.9)) %>%
   tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE)
 
+
 model_ests <- ggplot(pi_est, aes(x=week)) +
   geom_line(aes(y=med, color=factor(clade))) + 
   geom_ribbon(aes(fill=factor(clade), ymin=q10, ymax=q90), alpha=.3)+
   ylim(c(0,1)) +
+  theme(legend.position = "none") +
   ylab("clade probabilities")
 
 data_plot <- raw_d %>%
@@ -183,7 +187,72 @@ data_plot <- raw_d %>%
   ungroup() %>%
   mutate(clade_prop = clade_samples / total_samples) %>%
   ggplot(aes(x=epidate, y=clade_prop, color=Nextstrain_clade)) +
-  geom_line()
+  ylim(c(0,1)) +
+  geom_line() +
+  theme(legend.position = "bottom") 
 
-cowplot::plot_grid(model_ests, data_plot, nrow=2)
+cowplot::plot_grid(model_ests, data_plot, nrow=2, rel_heights = c(1,1.5))
 
+
+## draw and plot phis (with variance)
+
+## to show uncertainty in betas, without the noise of epi
+## for each draw
+## compute nb x K beta matrix
+## compute/store "noiseless" phi t x K matrix as B (t x nb) x beta
+
+## or, to show smooth spline with noise (but not uncertainty from beta)
+## draw mean beta
+## compute phi as B (t x nb) * beta (nb x K)
+## for each t,k, compute upper/lower bounds as normal(phi[t,k], sigma_eps[k])
+
+mean_beta <- summarise_draws(realdata_fit$draws("beta")) %>%
+  tidyr::extract(variable, c("basis", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>%
+  select(basis, clade, mean) %>%
+  pivot_wider(names_from = clade, values_from = mean) %>%
+  select(-basis) %>%
+  as.matrix()
+
+mean_sigma_eps <- summarise_draws(realdata_fit$draws("sigma_eps"))$mean
+
+mean_phi <- B %*% mean_beta %>%
+  as_tibble() %>%
+  mutate(t=1:n()) %>%
+  pivot_longer(cols = -t, names_to = "clade", values_to = "phi_mean") %>%
+  mutate(phi_lb = qnorm(0.05, mean = phi_mean, sd=mean_sigma_eps),
+         phi_ub = qnorm(0.95, mean = phi_mean, sd=mean_sigma_eps)) %>%
+  group_by(t) %>%
+  mutate(pi = exp(phi_mean)/sum(exp(phi_mean)),
+         pi_lb = exp(phi_lb)/sum(exp(phi_lb)),
+         pi_ub = exp(phi_ub)/sum(exp(phi_ub)))
+
+phi_plot <- ggplot(mean_phi, aes(x=t, y=phi_mean)) +
+  geom_line(aes(color=clade)) +
+  geom_ribbon(aes(ymin=phi_lb, ymax=phi_ub, fill=clade), alpha=.5)
+
+pi_plot <- ggplot(mean_phi, aes(x=t, y=pi)) +
+  geom_line(aes(color=clade)) +
+  geom_ribbon(aes(ymin=pi_lb, ymax=pi_ub, fill=clade), alpha=.5)
+
+cowplot::plot_grid(phi_plot, pi_plot, nrow=2)
+
+
+phi_mean <- summarise_draws(realdata_fit$draws("phi_mean")) %>%
+  tidyr::extract(variable, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>%
+  select(week, clade, phi_mean = mean)
+
+phi_lb <- summarise_draws(realdata_fit$draws("phi_lb")) %>%
+  tidyr::extract(variable, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>%
+  select(week, clade, phi_lb = mean)
+
+phi_ub <- summarise_draws(realdata_fit$draws("phi_ub")) %>%
+  tidyr::extract(variable, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>%
+  select(week, clade, phi_ub = mean)
+
+phi_ests <- phi_mean %>%
+  left_join(phi_lb) %>%
+  left_join(phi_ub)
+
+ggplot(phi_ests, aes(x=week, y=phi_mean)) +
+  geom_line(aes(color=factor(clade))) +
+  geom_ribbon(aes(ymin=phi_lb, ymax=phi_mean, fill=factor(clade)), alpha=.5)

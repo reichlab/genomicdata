@@ -5,21 +5,24 @@ library(cmdstanr)
 library(posterior)
 library(splines)
 
-mdl <- cmdstan_model(stan_file = "R/spline-dirichlet-multnomial-model.stan")
+theme_set(theme_bw())
+
+mdl <- cmdstan_model(stan_file = "R/simple-dirichlet-4.stan")
 
 ########
 ## simulate fake data
 T <- 100
-K <- 2
+K <- 3
 t <- 1:T
 n_basis <- max(round(T/10), 4)
 B <- bs(t, df = n_basis, intercept=TRUE)
 N <- rep(200, times=T)  
 
 # simulate betas
-sigma_beta <- 1
+mu_beta <- 0
+sigma_beta <- 5
 sigma_beta_rw <- 0.2
-sim_betas <- function(n_basis, K, s_beta, s_beta_rw) {
+sim_betas_cauchy <- function(n_basis, K, s_beta, s_beta_rw) {
   beta <- matrix(NA, nrow=n_basis, ncol=K)
   beta[1,] <- rnorm(K, 0, s_beta)
   for(j in 2:n_basis) {
@@ -27,111 +30,114 @@ sim_betas <- function(n_basis, K, s_beta, s_beta_rw) {
   }
   return(beta)
 }
+sim_betas_norm <- function(n_basis, K, mu_beta, s_beta) {
+  beta <- matrix(rnorm(n_basis*K, mu_beta, s_beta), nrow=n_basis, ncol=K)
+  return(beta)
+}
+sim_betas_halfnormal <- function(n_basis, K, mu_beta, s_beta) {
+  beta <- matrix(abs(rnorm(n_basis*K, mu_beta, s_beta)), nrow=n_basis, ncol=K)
+  return(beta)
+}
+sim_betas_halfcauchy <- function(n_basis, K, mu_beta, s_beta) {
+  beta <- matrix(abs(rcauchy(n_basis*K, mu_beta, s_beta)), nrow=n_basis, ncol=K)
+  return(beta)
+}
+
+
 nsim <- 20
-set.seed(731)
 betas <- replicate(nsim, 
-                       sim_betas(n_basis=n_basis, K=K, s_beta=sigma_beta, s_beta_rw=sigma_beta_rw), 
-                       simplify=FALSE)
+                   sim_betas_halfcauchy(n_basis=n_basis, K=K, mu_beta = mu_beta, s_beta=sigma_beta), 
+                   simplify=FALSE)
 
-# simulate meaningless Ys
-weights <- B %*% betas[[1]]
-Y <- matrix(NA, nrow=T, ncol=K)
-for(t in 1:T)
-  Y[t,] <- t(rmultinom(1, size=N, prob=exp(weights[t,])/sum(exp(weights[t,])))) #matrix(10, nrow=T, ncol=K)
-
-sim_out <- mdl$sample(data = list(T = T, ## num observations
-                                  K = K,   ## num clades
-                                  # Y should be real but fake data if we're simulating
-                                  # new Y
-                                  Y = Y,    ## obs
-                                  n_basis = n_basis, ## num basis funcitons
-                                  B = B,        ## design matrix of basis functions 
-                                  sigma_beta = 1, ## prior sd for beta
-                                  sigma_beta_rw = 1), ## prior sd for beta RW 
-                      init = list(list(beta_raw = betas[[1]])), #matrix(1, n_basis, K-1))),
-                      chains = 1,
-                      # init = list(
-                      #   list(beta_raw = betas[[1]]),list(beta_raw = betas[[2]]),
-                      #   list(beta_raw = betas[[3]]),list(beta_raw = betas[[4]]),
-                      #   list(beta_raw = betas[[5]]),list(beta_raw = betas[[6]]),
-                      #   list(beta_raw = betas[[7]]),list(beta_raw = betas[[8]]),
-                      #   list(beta_raw = betas[[9]]),list(beta_raw = betas[[10]]),
-                      #   list(beta_raw = betas[[11]]),list(beta_raw = betas[[12]]),
-                      #   list(beta_raw = betas[[13]]),list(beta_raw = betas[[14]]),
-                      #   list(beta_raw = betas[[15]]),list(beta_raw = betas[[16]]),
-                      #   list(beta_raw = betas[[17]]),list(beta_raw = betas[[18]]),
-                      #   list(beta_raw = betas[[19]]),list(beta_raw = betas[[20]])
-                      # ),
-                      # chains=20, 
-                      parallel_chains=10,
-                      fixed_param = TRUE)
-
-## get and plot simulated ys
-draws_f <- as_draws_df(sim_out$draws("F_sim"))
-
-fsim <- pivot_longer(draws_f, cols = starts_with("F_sim")) %>%
-  rename(chain=.chain) %>%
-  group_by(name, chain) %>%
-  summarize(med = median(value),
-            q10 = quantile(value, probs=0.1),
-            q90 = quantile(value, probs=0.9)) %>%
-  tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE)
+phi_plots <- vector(mode="list", length=nsim)
+prob_plots <- vector(mode="list", length=nsim)
+#par(mfrow=c(4, 5), mar=c(.2, .2, .2, .2))
+y <- array(NA, dim=c(T, K, nsim))
+for(i in 1:nsim){
+  # simulate ys
+  phi <- B %*% betas[[i]]
+  for(t in 1:T)
+    y[t,,i] <- t(rmultinom(1, 
+                           size = N[1], 
+                           prob = gtools::rdirichlet(1, phi[t,])))
   
-ggplot(fsim, aes(x=week, y=med)) +
-  geom_line(aes(color=factor(clade))) +
-  ylim(c(0,1)) +
-  facet_wrap(.~chain) +
-  ylab("clade counts")
+  #plot(1:T, y[,1,i], type="l", ylim=c(0,N[1]), xaxt="n", yaxt="n")
+  #points(1:T, y[,2,i], type="l", col="red")
+  #points(1:T, y[,3,i], type="l", col="blue")
 
 
-## run HMC for one beta and compare to truth
-idx <- 13
-Y <- ysim %>% 
-  filter(chain==idx) %>%
-  arrange(week) %>%
-  pivot_wider(id_cols = week, names_from = "clade", values_from = "med", names_prefix = "clade") %>%
-  as.matrix() %>%
-  .[,2:(K+1)]
+  ## run HMC for one beta and compare to truth
   
-mdl_fit <- mdl$sample(data = list(T = T, ## num observations
-                                  K = K,   ## num clades
-                                  Y = Y,    ## obs
-                                  N = N,    ## total samples per time
-                                  n_basis = n_basis, ## num basis funcitons
-                                  B = B,        ## design matrix of basis functions 
-                                  sigma_beta = 5, ## prior sd for beta
-                                  sigma_beta_rw = 2), ## prior sd for beta RW 
-                      chains=4, 
-                      parallel_chains=4)
+  mdl_fit <- mdl$sample(data = list(T = T, ## num observations
+                                    K = K,   ## num clades
+                                    Y = y[,,i],    ## obs
+                                    n_basis = n_basis, ## num basis funcitons
+                                    B = B,        ## design matrix of basis functions 
+                                    sigma_beta = 5, ## prior sd for beta
+                                    mu_beta = 0), ## prior mean for beta
+                        chains=4, 
+                        parallel_chains=4)
+  
+  ## get and plot simulated pi's
+  draws_phi <- as_draws_df(mdl_fit$draws("phi"))
+  
+  phi_est <- pivot_longer(draws_phi, cols = starts_with("phi")) %>%
+    rename(chain=.chain) %>%
+    tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>% 
+    group_by(week, chain, .iteration, .draw) %>%
+    mutate(total_phi = sum(value)) %>%
+    ungroup() %>%
+    mutate(exp_prob = value/total_phi) %>%
+    group_by(name) %>%
+    summarize(med = median(value),
+              q10 = quantile(value, probs=0.1),
+              q90 = quantile(value, probs=0.9),
+              med_prob = median(exp_prob),
+              q10_prob = quantile(exp_prob, probs=0.1),
+              q90_prob = quantile(exp_prob, probs=0.9))  %>%
+    tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE)
+  
+  true_phis <- B %*% betas[[i]] |> 
+    as_tibble() |> 
+    rename(phi_1 = V1,
+           phi_2 = V2,
+           phi_3 = V3) |> 
+    select(starts_with("phi")) |> 
+    mutate(week = 1:n()) %>%
+    pivot_longer(cols = starts_with("phi"), names_to = "clade", values_to = "phi") %>%
+    group_by(week) %>%
+    mutate(exp_prob = phi/sum(phi))
+  
+  dat <- data.frame(y[,,i]) %>%
+    mutate(week=1:n()) %>%
+    pivot_longer(cols=-week) %>%
+    mutate(clade = substr(name, 2, 3)) %>%
+    group_by(week) %>%
+    mutate(freq = value/sum(value))
+  
+  ## plot phi
+  phi_plots[[i]] <- ggplot(phi_est, aes(x=week)) +
+    geom_line(aes(y=med, color=factor(clade))) + 
+    geom_line(data=true_phis, aes(y=phi, group=clade)) +
+    geom_ribbon(aes(fill=factor(clade), ymin=q10, ymax=q90), alpha=.3)+
+    ylab("clade dirichlet params") +
+    theme(legend.position = "none")
+  
+  ## plot probs
+  prob_plots[[i]] <- ggplot(phi_est, aes(x=week)) +
+    geom_line(aes(y=med_prob, color=factor(clade))) + 
+    geom_line(data=true_phis, aes(y=exp_prob, group=clade)) +
+    geom_point(data=dat, aes(y=freq, color=clade), alpha=.2) +
+    geom_ribbon(aes(fill=factor(clade), ymin=q10_prob, ymax=q90_prob), alpha=.3)+
+    scale_y_continuous("clade probabilities", limits=c(0,1)) +
+    theme(legend.position = "none")
+}  
 
-## get and plot simulated pi's
-draws_pi <- as_draws_df(mdl_fit$draws("pi"))
+phips <- gridExtra::marrangeGrob(phi_plots, nrow=4, ncol=5)
+ggsave("phi-plots.pdf", phips, width = 12, height=8)
 
-pi_est <- pivot_longer(draws_pi, cols = starts_with("pi")) %>%
-  rename(chain=.chain) %>%
-  group_by(name) %>%
-  summarize(med = median(value),
-            q10 = quantile(value, probs=0.1),
-            q90 = quantile(value, probs=0.9)) %>%
-  tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE)
-
-true_pis <- B %*% betas[[idx]] %>%
-  as_tibble() %>%
-  mutate(pi_1 = exp(V1) / ( exp(V1)+exp(V2)+exp(V3) ),
-         pi_2 = exp(V2) / ( exp(V1)+exp(V2)+exp(V3) ),
-         pi_3 = exp(V3) / ( exp(V1)+exp(V2)+exp(V3) )) %>%
-  select(starts_with("pi")) %>%
-  mutate(week = 1:n()) %>%
-  pivot_longer(cols = starts_with("pi"), names_to = "clade", values_to = "pi")
-
-
-ggplot(pi_est, aes(x=week)) +
-  geom_line(aes(y=med, color=factor(clade))) + 
-  geom_line(data=true_pis, aes(y=pi, group=clade)) +
-  geom_ribbon(aes(fill=factor(clade), ymin=q10, ymax=q90), alpha=.3)+
-  ylim(c(0,1)) +
-  ylab("clade probabilities")
-
+prps <- gridExtra::marrangeGrob(prob_plots, nrow=4, ncol=5)
+ggsave("prob-plots.pdf", prps, width = 12, height=8)
 
 ########
 ## estimate model using real data
@@ -156,42 +162,54 @@ d <- raw_d %>%
 realdata_fit <- mdl$sample(data = list(T = nrow(d), ## num observations
                                        K = ncol(d)-1,   ## num clades
                                        Y = as.matrix(d[,-1]),    ## obs
-                                       n_basis = 5, ## num basis funcitons
-                                       B = B <- bs(1:nrow(d), df = 5, intercept=TRUE), ## design matrix of basis functions 
-                                       sigma_beta = 1, ## prior sd for beta
-                                       sigma_beta_rw = .5), ## prior sd for beta RW 
+                                       n_basis = 8, ## num basis funcitons
+                                       B = B <- bs(1:nrow(d), df = 8, intercept=TRUE), ## design matrix of basis functions 
+                                       mu_beta = 0, ## prior mean for beta
+                                       sigma_beta = 5), ## prior sd for beta RW 
                            chains=4, 
                            parallel_chains=4)
 # get and plot simulated pi's
-draws_pi <- as_draws_df(realdata_fit$draws("pi"))
+draws_phi <- as_draws_df(realdata_fit$draws("phi"))
 
-pi_est <- pivot_longer(draws_pi, cols = starts_with("pi")) %>%
+phi_est <- pivot_longer(draws_phi, cols = starts_with("phi")) %>%
   rename(chain=.chain) %>%
+  tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>% 
+  group_by(week, chain, .iteration, .draw) %>%
+  mutate(total_phi = sum(value)) %>%
+  ungroup() %>%
+  mutate(exp_prob = value/total_phi) %>%
   group_by(name) %>%
   summarize(med = median(value),
             q10 = quantile(value, probs=0.1),
-            q90 = quantile(value, probs=0.9)) %>%
-  tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE)
+            q90 = quantile(value, probs=0.9),
+            med_prob = median(exp_prob),
+            q10_prob = quantile(exp_prob, probs=0.1),
+            q90_prob = quantile(exp_prob, probs=0.9))  %>%
+  tidyr::extract(name, c("week", "clade"), "([[:alnum:]]+),([[:alnum:]]+)", remove=FALSE, convert=TRUE) %>%
+  mutate(clade = factor(clade, levels = 1:7, labels=colnames(d)[-1]))
 
-
-model_ests <- ggplot(pi_est, aes(x=week)) +
-  geom_line(aes(y=med, color=factor(clade))) + 
-  geom_ribbon(aes(fill=factor(clade), ymin=q10, ymax=q90), alpha=.3)+
-  ylim(c(0,1)) +
-  theme(legend.position = "none") +
-  ylab("clade probabilities")
-
-data_plot <- raw_d %>%
+data_to_plot <- raw_d %>%
+  filter(Nextstrain_clade %in% clades) %>%
   group_by(epidate) %>%
   mutate(total_samples = sum(clade_samples)) %>%
   ungroup() %>%
   mutate(clade_prop = clade_samples / total_samples) %>%
-  ggplot(aes(x=epidate, y=clade_prop, color=Nextstrain_clade)) +
-  ylim(c(0,1)) +
-  geom_line() +
-  theme(legend.position = "bottom") 
+  mutate(clade = factor(Nextstrain_clade, levels=levels(phi_est$clade))) %>%
+  group_by(clade) %>%
+  arrange(epidate) %>%
+  mutate(week = as.numeric(difftime(epidate, as.Date("2020-03-29"), units = "week")))
+  
 
-cowplot::plot_grid(model_ests, data_plot, nrow=2, rel_heights = c(1,1.5))
+ggplot(phi_est, aes(x=week)) +
+  geom_point(data=data_to_plot, aes(y=clade_prop, color=factor(clade)), alpha=.3) +
+  geom_line(aes(y=med_prob, color=factor(clade))) + 
+  geom_ribbon(aes(fill=factor(clade), ymin=q10_prob, ymax=q90_prob), alpha=.3) +
+  ylim(c(0,1)) +
+  theme(legend.position = "bottom") +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  ylab("clade probabilities")
+
 
 
 

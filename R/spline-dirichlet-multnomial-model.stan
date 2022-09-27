@@ -8,8 +8,9 @@ data {
   int<lower=1> T; // # of observations
   int<lower=1> K; // # of clades
   
-  array[T,K] int Y; // counts of clade k at time t
-  
+  // array[T,K] int Y; // counts of clade k at time t
+  matrix<lower=0,upper=1>[T,K] Fdat; // frequencies of clade k at time t
+
   int<lower=1> n_basis; // number of basis functions
   matrix[T, n_basis] B; // design matrix with basis functions **will increase T when forecasting**
   
@@ -24,26 +25,21 @@ transformed data {
     ones[i] = 1;
   }
 
-  matrix<lower=0,upper=1>[T,K] F; // frequencies of clade k at time t
-  for (t in 1:T) {
-    F[t,] = to_row_vector(Y[t,]) / sum(Y[t,]);
-  }
+  // matrix<lower=0,upper=1>[T,K] F; // frequencies of clade k at time t
+  // for (t in 1:T) {
+  //   F[t,] = to_row_vector(Y[t,]) / sum(Y[t,]);
+  // }
 }
 
 parameters {
-  matrix[n_basis,K-1] beta_raw;
+  matrix[n_basis,K] beta;
 }
 
 transformed parameters{
-  matrix[T,K] phi; 
+  matrix<lower=0>[T,K] phi; 
   
-  // defines beta as beta_raw plus a column that 
-  matrix[n_basis,K] beta = append_col(beta_raw, -beta_raw*ones);
-
-  // compute spline values, for each k (clade)
-  for (k in 1:K){
-    phi[,k] = exp( B * beta[,k] );
-  }
+  // compute exponentiated (for non-negative) spline values
+  phi = exp( B * beta );
 }
 
 model {
@@ -54,11 +50,11 @@ model {
   //     beta[j,k] ~ cauchy(beta[j-1,k], sigma_beta_rw); // RW-like structure after 
   //   }
   // }
-  to_vector(beta_raw[,1:(K-1)]) ~ normal(0, sigma_beta);
+  to_vector(beta) ~ normal(0, sigma_beta);
   
   // define probabilities and define likelihood, for each time
   for (t in 1:T){
-    F[t,] ~ dirichlet(phi[t,]);
+    Fdat[t,] ~ dirichlet(phi[t,]);
   }
 }
 
